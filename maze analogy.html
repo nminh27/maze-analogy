@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum vs Classical Maze Analogy</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            background-color: #0b0f19; 
+            color: #f8fafc; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        h1 { font-size: 36px; font-weight: 600; margin-bottom: 10px; }
+        p.subtitle { color: #94a3b8; font-size: 16px; max-width: 800px; }
+        
+        .simulation-container {
+            display: flex;
+            gap: 40px;
+            width: 100%;
+            max-width: 1100px;
+        }
+        .panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        h2 { font-size: 20px; font-weight: 500; margin-bottom: 15px; }
+        
+        .canvas-wrapper {
+            background-color: #020617;
+            border: 1px solid #1e293b;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            position: relative;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+        }
+        
+        .description {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #cbd5e1;
+            line-height: 1.5;
+        }
+        .description strong { color: #f8fafc; }
+
+        .controls {
+            margin-top: 40px;
+        }
+        button {
+            background-color: #0ea5e9;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+            box-shadow: 0 4px 15px rgba(14, 165, 233, 0.4);
+        }
+        button:hover { background-color: #0284c7; }
+        button:active { transform: translateY(2px); }
+        
+        .timer-badge {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid #334155;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 14px;
+            color: #94a3b8;
+        }
+        .finished .timer-badge { color: #34d399; border-color: #34d399; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>The Maze Solving Analogy</h1>
+        <p class="subtitle">How quantum computers explore possibilities differently compared to traditional sequential logic.</p>
+    </div>
+
+    <div class="simulation-container">
+        <div class="panel">
+            <h2>Classical: Sequential Path</h2>
+            <div class="canvas-wrapper" id="classical-wrapper">
+                <div class="timer-badge" id="classical-timer">Time: 0.0s</div>
+                <canvas id="classicalCanvas" width="500" height="350"></canvas>
+            </div>
+            <p class="description"><strong>Step-by-Step Exploration</strong><br>A classical computer tests one path at a time. If it hits a dead end, it must backtrack and start over. It takes significantly longer to find the exit.</p>
+        </div>
+
+        <div class="panel">
+            <h2>Quantum: Simultaneous Wave</h2>
+            <div class="canvas-wrapper" id="quantum-wrapper">
+                <div class="timer-badge" id="quantum-timer">Time: 0.0s</div>
+                <canvas id="quantumCanvas" width="500" height="350"></canvas>
+            </div>
+            <p class="description"><strong>Parallel Probability Wave</strong><br>A quantum computer explores all possible paths simultaneously as a wave, identifying the shortest route almost instantly.</p>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button id="runBtn">Run Simulation</button>
+    </div>
+
+    <script>
+        // --- MAZE DEFINITION & SETUP ---
+        const cCanvas = document.getElementById('classicalCanvas');
+        const cCtx = cCanvas.getContext('2d');
+        const qCanvas = document.getElementById('quantumCanvas');
+        const qCtx = qCanvas.getContext('2d');
+
+        // Colors
+        const colBase = '#1e293b';       // Faint maze lines
+        const colActive = '#06b6d4';     // Cyan active path
+        const colWave = 'rgba(6, 182, 212, 0.2)'; // Faint circles
+        const colSuccess = '#34d399';    // Green success
+        
+        // Nodes defining the maze
+        // Start: 0, End: 8. Dead ends: 3, 5.
+        const nodes = {
+            0: {x: 50, y: 175, d: 0},
+            1: {x: 175, y: 175, d: 125},
+            2: {x: 175, y: 50, d: 250},
+            3: {x: 300, y: 50, d: 375},    // Dead end 1
+            4: {x: 175, y: 300, d: 250},
+            5: {x: 300, y: 300, d: 375},    // Dead end 2
+            6: {x: 300, y: 175, d: 250},
+            7: {x: 300, y: 100, d: 325},
+            8: {x: 450, y: 100, d: 475}     // Exit
+        };
+
+        const edges = [
+            {n1:0, n2:1}, {n1:1, n2:2}, {n1:2, n2:3}, {n1:1, n2:4}, 
+            {n1:4, n2:5}, {n1:1, n2:6}, {n1:6, n2:7}, {n1:7, n2:8}
+        ];
+        const correctPathEdges = ["0-1", "1-6", "6-7", "7-8"];
+
+        // Sequence of nodes the classical dot travels
+        const classicalSequence = [0, 1, 2, 3, 2, 1, 4, 5, 4, 1, 6, 7, 8];
+        let classicalDistances = [0];
+        for(let i=1; i<classicalSequence.length; i++) {
+            let p1 = nodes[classicalSequence[i-1]];
+            let p2 = nodes[classicalSequence[i]];
+            let dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+            classicalDistances.push(classicalDistances[i-1] + dist);
+        }
+        const totalClassicalDist = classicalDistances[classicalDistances.length - 1];
+        const totalQuantumDist = nodes[8].d;
+
+        // Animation Variables
+        let isRunning = false;
+        let startTime = 0;
+        const speed = 150; // pixels per second
+        let cFinished = false;
+        let qFinished = false;
+
+        // --- DRAWING FUNCTIONS ---
+
+        function drawBaseMaze(ctx) {
+            ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+            // Draw faint grid lines (optional, for aesthetics)
+            ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+            ctx.lineWidth = 1;
+            for(let i=0; i<500; i+=25) {
+                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 350); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(500, i); ctx.stroke();
+            }
+
+            ctx.strokeStyle = colBase;
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            // Draw all paths
+            edges.forEach(e => {
+                ctx.beginPath();
+                ctx.moveTo(nodes[e.n1].x, nodes[e.n1].y);
+                ctx.lineTo(nodes[e.n2].x, nodes[e.n2].y);
+                ctx.stroke();
+            });
+
+            // Draw Start and End markers
+            ctx.fillStyle = '#475569';
+            ctx.beginPath(); ctx.arc(nodes[0].x, nodes[0].y, 6, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(nodes[8].x, nodes[8].y, 6, 0, Math.PI*2); ctx.fill();
+        }
+
+        function drawClassical(distance) {
+            drawBaseMaze(cCtx);
+            
+            cCtx.strokeStyle = cFinished ? colSuccess : colActive;
+            cCtx.lineWidth = 4;
+            cCtx.beginPath();
+            
+            let curX = nodes[0].x, curY = nodes[0].y;
+            cCtx.moveTo(curX, curY);
+
+            // Find which segment we are currently on
+            for(let i=1; i<classicalDistances.length; i++) {
+                if (distance >= classicalDistances[i]) {
+                    // Passed this node, draw line to it
+                    curX = nodes[classicalSequence[i]].x;
+                    curY = nodes[classicalSequence[i]].y;
+                    cCtx.lineTo(curX, curY);
+                } else {
+                    // We are somewhere on this segment
+                    let prevDist = classicalDistances[i-1];
+                    let segmentDist = classicalDistances[i] - prevDist;
+                    let progress = (distance - prevDist) / segmentDist;
+                    
+                    let p1 = nodes[classicalSequence[i-1]];
+                    let p2 = nodes[classicalSequence[i]];
+                    
+                    curX = p1.x + (p2.x - p1.x) * progress;
+                    curY = p1.y + (p2.y - p1.y) * progress;
+                    cCtx.lineTo(curX, curY);
+                    break;
+                }
+            }
+            cCtx.stroke();
+
+            // Draw moving dot
+            cCtx.fillStyle = cFinished ? colSuccess : colActive;
+            cCtx.beginPath();
+            cCtx.arc(curX, curY, 8, 0, Math.PI*2);
+            cCtx.fill();
+            cCtx.shadowBlur = 15;
+            cCtx.shadowColor = cCtx.fillStyle;
+            cCtx.fill(); // double fill for glow
+            cCtx.shadowBlur = 0; // reset
+        }
+
+        function drawQuantum(distance) {
+            drawBaseMaze(qCtx);
+
+            edges.forEach(e => {
+                let p1 = nodes[e.n1], p2 = nodes[e.n2];
+                let edgeId = `${e.n1}-${e.n2}`;
+                
+                // Determine fill amount for this edge
+                let fillProgress = 0;
+                if (distance >= p2.d) { fillProgress = 1; }
+                else if (distance > p1.d) { fillProgress = (distance - p1.d) / (p2.d - p1.d); }
+
+                if (fillProgress > 0) {
+                    // Draw filled path
+                    qCtx.strokeStyle = (qFinished && correctPathEdges.includes(edgeId)) ? colSuccess : colActive;
+                    // Fade out wrong paths when finished
+                    if (qFinished && !correctPathEdges.includes(edgeId)) {
+                        qCtx.strokeStyle = 'rgba(100, 116, 139, 0.3)';
+                    }
+                    
+                    qCtx.lineWidth = 4;
+                    qCtx.beginPath();
+                    qCtx.moveTo(p1.x, p1.y);
+                    
+                    let curX = p1.x + (p2.x - p1.x) * fillProgress;
+                    let curY = p1.y + (p2.y - p1.y) * fillProgress;
+                    qCtx.lineTo(curX, curY);
+                    qCtx.stroke();
+
+                    // Draw expanding wave effect if edge is currently filling
+                    if (fillProgress < 1 && !qFinished) {
+                        qCtx.strokeStyle = colWave;
+                        qCtx.lineWidth = 1;
+                        qCtx.beginPath();
+                        // Radius pulses based on distance to create wave illusion
+                        let radius = (distance % 30) + 10;
+                        qCtx.arc(curX, curY, radius, 0, Math.PI*2);
+                        qCtx.stroke();
+                        
+                        // Second wave ring
+                        qCtx.beginPath();
+                        qCtx.arc(curX, curY, radius + 15, 0, Math.PI*2);
+                        qCtx.stroke();
+                    }
+                }
+            });
+
+            if (qFinished) {
+                // Highlight End Node
+                qCtx.fillStyle = colSuccess;
+                qCtx.beginPath(); qCtx.arc(nodes[8].x, nodes[8].y, 8, 0, Math.PI*2); qCtx.fill();
+                qCtx.shadowBlur = 15; qCtx.shadowColor = colSuccess; qCtx.fill(); qCtx.shadowBlur = 0;
+            }
+        }
+
+        // --- ANIMATION LOOP ---
+        function animate(timestamp) {
+            if (!startTime) startTime = timestamp;
+            let elapsed = (timestamp - startTime) / 1000; // in seconds
+            let currentDist = elapsed * speed;
+
+            // Classical Logic
+            if (currentDist >= totalClassicalDist) {
+                cFinished = true;
+                drawClassical(totalClassicalDist);
+                document.getElementById('classical-wrapper').classList.add('finished');
+            } else {
+                drawClassical(currentDist);
+                document.getElementById('classical-timer').innerText = `Time: ${elapsed.toFixed(1)}s`;
+            }
+
+            // Quantum Logic
+            if (currentDist >= totalQuantumDist) {
+                if(!qFinished) {
+                    qFinished = true;
+                    // Freeze quantum timer at the exact finish time
+                    let qFinishTime = totalQuantumDist / speed;
+                    document.getElementById('quantum-timer').innerText = `Time: ${qFinishTime.toFixed(1)}s`;
+                    document.getElementById('quantum-wrapper').classList.add('finished');
+                }
+                drawQuantum(totalQuantumDist);
+            } else {
+                drawQuantum(currentDist);
+                document.getElementById('quantum-timer').innerText = `Time: ${elapsed.toFixed(1)}s`;
+            }
+
+            if (!cFinished || !qFinished) {
+                requestAnimationFrame(animate);
+            } else {
+                isRunning = false;
+                document.getElementById('runBtn').innerText = "Restart Simulation";
+            }
+        }
+
+        document.getElementById('runBtn').addEventListener('click', () => {
+            if (isRunning) return;
+            isRunning = true;
+            startTime = 0;
+            cFinished = false;
+            qFinished = false;
+            document.getElementById('runBtn').innerText = "Running...";
+            
+            // Reset UI
+            document.getElementById('classical-wrapper').classList.remove('finished');
+            document.getElementById('quantum-wrapper').classList.remove('finished');
+            
+            requestAnimationFrame(animate);
+        });
+
+        // Initial Draw
+        drawBaseMaze(cCtx);
+        drawBaseMaze(qCtx);
+
+    </script>
+</body>
+</html>
